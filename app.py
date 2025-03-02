@@ -668,23 +668,30 @@ async def process_model_response(response, model):
         if response and response.get("isThinking", False) and not CONFIG["SHOW_THINKING"]:
             return result
             
-        if response and response.get("isThinking", False) and not CONFIG["IS_THINKING"]:
-            result["token"] = "<think>" + response.get("token", "")
-            CONFIG["IS_THINKING"] = True
+        if response and response.get("isThinking", False):
+            if not CONFIG["IS_THINKING"]:
+                # 开始思考过程
+                result["token"] = "<think>" + response.get("token", "")
+                CONFIG["IS_THINKING"] = True
+            else:
+                # 继续思考过程
+                result["token"] = response.get("token", "")
         elif response and response.get("messageTag") == "final":
             if CONFIG["IS_THINKING"]:
-                # 确保在最终消息前关闭思考标签
-                result["token"] = "</think>" + response.get("token", "")
+                # 如果还在思考状态，先关闭思考标签
+                result["token"] = "</think>\n" + response.get("token", "")
                 CONFIG["IS_THINKING"] = False
             else:
+                # 直接输出最终消息
                 result["token"] = response.get("token")
-        elif response and not response.get("isThinking", True) and CONFIG["IS_THINKING"]:
-            # 普通的思考过程结束
-            result["token"] = "</think>" + response.get("token", "")
-            CONFIG["IS_THINKING"] = False
-        else:
-            # 普通消息
-            result["token"] = response.get("token")
+        elif response and not response.get("isThinking", False):
+            if CONFIG["IS_THINKING"]:
+                # 思考过程结束，切换到正常输出
+                result["token"] = "</think>\n" + response.get("token", "")
+                CONFIG["IS_THINKING"] = False
+            else:
+                # 正常输出
+                result["token"] = response.get("token")
     elif model == "grok-3-reasoning":
         if response and response.get("isThinking", False) and not CONFIG["SHOW_THINKING"]:
             return result
