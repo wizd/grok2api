@@ -755,7 +755,7 @@ async def stream_response_generator(response, model):
                         break
                     except Exception as e:
                         logger.error(f"迭代行时出错: {str(e)}", "Server")
-                        raise  # 重新抛出错误以终止流
+                        break  # 不再抛出异常，而是结束迭代
             finally:
                 # 确保在任何情况下都关闭响应
                 if hasattr(response, 'close'):
@@ -798,24 +798,26 @@ async def stream_response_generator(response, model):
                     if CONFIG["IS_THINKING"]:
                         yield f"data: {json.dumps(MessageProcessor.create_chat_response('</think>', model, True))}\n\n"
                         CONFIG["IS_THINKING"] = False
-                    raise  # 重新抛出错误以终止流
+                    break  # 不再抛出异常，而是结束迭代
                     
         except Exception as error:
             logger.error(f"流处理过程中发生错误: {str(error)}", "Server")
-            raise
-            
-        finally:
-            # 只在流正常结束且仍在思考状态时添加结束标签
             if CONFIG["IS_THINKING"]:
                 yield f"data: {json.dumps(MessageProcessor.create_chat_response('</think>', model, True))}\n\n"
                 CONFIG["IS_THINKING"] = False
-            # 发送[DONE]标记
-            yield "data: [DONE]\n\n"
             
     except Exception as error:
         logger.error(f"流式响应总体错误: {str(error)}", "Server")
+        if CONFIG["IS_THINKING"]:
+            yield f"data: {json.dumps(MessageProcessor.create_chat_response('</think>', model, True))}\n\n"
+            CONFIG["IS_THINKING"] = False
+            
+    finally:
+        # 确保在所有情况下都发送[DONE]标记
+        if CONFIG["IS_THINKING"]:
+            yield f"data: {json.dumps(MessageProcessor.create_chat_response('</think>', model, True))}\n\n"
+            CONFIG["IS_THINKING"] = False
         yield "data: [DONE]\n\n"
-        raise error
 
 async def handle_normal_response(response, model):
     try:
