@@ -43,7 +43,7 @@ CONFIG = {
         "PORT": int(os.getenv("PORT", 3000))
     },
     "RETRY": {
-        "MAX_ATTEMPTS": 2 
+        "MAX_ATTEMPTS": int(os.getenv("MAX_ATTEMPTS", 2))
     },
     "SHOW_THINKING": os.getenv("SHOW_THINKING", "false").lower() == "true",
     "IS_THINKING": False,
