@@ -691,67 +691,71 @@ async def stream_response_generator(response, model):
         
         async def iter_lines():
             line_iter = response.iter_lines()
-            while True:
-                try:
-                    line = await Utils.run_in_executor(lambda: next(line_iter, None))
-                    if line is None: 
-                        break
-                    yield line
-                except StopIteration:
-                    break
-                except Exception as e:
-                    logger.error(f"迭代行时出错: {str(e)}", "Server")
-                    break
-        
-        async for line in iter_lines():
-            if not line:
-                continue
-                
             try:
+                while True:
+                    try:
+                        line = await Utils.run_in_executor(lambda: next(line_iter, None))
+                        if line is None: 
+                            break
+                        yield line
+                    except StopIteration:
+                        break
+                    except Exception as e:
+                        logger.error(f"迭代行时出错: {str(e)}", "Server")
+                        raise  # 重新抛出错误以终止流
+            finally:
+                # 确保在任何情况下都关闭响应
+                if hasattr(response, 'close'):
+                    await Utils.run_in_executor(response.close)
+        
+        try:
+            async for line in iter_lines():
+                if not line:
+                    continue
+                    
                 try:
                     line_str = line.decode('utf-8', errors='replace')
-                    # 添加检查，确保解码后的字符串是有效的JSON格式
                     if not line_str.strip() or not line_str.strip()[0] in ['{', '[']:
                         logger.warning(f"无效的JSON数据: {line_str}", "Server")
                         continue
-                except UnicodeDecodeError:
-                    logger.warning("解码失败，跳过此行数据", "Server")
-                    continue
-                
-                try:
+                        
                     line_json = json.loads(line_str)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"JSON解析失败: {e}, 数据: {line_str[:50]}...", "Server")
-                    continue
-                
-                if line_json and line_json.get("error"):
-                    raise ValueError("RateLimitError")
+                    if line_json and line_json.get("error"):
+                        raise ValueError("RateLimitError")
+                        
+                    response_data = line_json.get("result", {}).get("response")
+                    if not response_data:
+                        continue
+                        
+                    if response_data.get("doImgGen") or response_data.get("imageAttachmentInfo"):
+                        CONFIG["IS_IMG_GEN"] = True
+                        
+                    result = await process_model_response(response_data, model)
                     
-                response_data = line_json.get("result", {}).get("response")
-                if not response_data:
-                    continue
+                    if result["token"]:
+                        yield f"data: {json.dumps(MessageProcessor.create_chat_response(result['token'], model, True))}\n\n"
+                        
+                    if result["imageUrl"]:
+                        CONFIG["IS_IMG_GEN2"] = True
+                        data_image = await handle_image_response(result["imageUrl"], model)
+                        yield f"data: {json.dumps(MessageProcessor.create_chat_response(data_image, model, True))}\n\n"
+                        
+                except Exception as error:
+                    logger.error(f"处理行数据错误: {str(error)}", "Server")
+                    raise  # 重新抛出错误以终止流
                     
-                if response_data.get("doImgGen") or response_data.get("imageAttachmentInfo"):
-                    CONFIG["IS_IMG_GEN"] = True
-                    
-                result = await process_model_response(response_data, model)
-                
-                if result["token"]:
-                    yield f"data: {json.dumps(MessageProcessor.create_chat_response(result['token'], model, True))}\n\n"
-                    
-                if result["imageUrl"]:
-                    CONFIG["IS_IMG_GEN2"] = True
-                    data_image = await handle_image_response(result["imageUrl"], model)
-                    yield f"data: {json.dumps(MessageProcessor.create_chat_response(data_image, model, True))}\n\n"
-                    
-            except Exception as error:
-                logger.error(f"处理行数据错误: {str(error)}", "Server")
-                continue
-                
-        yield "data: [DONE]\n\n"
-        
+        except Exception as error:
+            logger.error(f"流处理过程中发生错误: {str(error)}", "Server")
+            raise
+            
+        finally:
+            # 确保在流结束时发送[DONE]标记
+            yield "data: [DONE]\n\n"
+            
     except Exception as error:
         logger.error(f"流式响应总体错误: {str(error)}", "Server")
+        # 在发生错误时也发送[DONE]标记
+        yield "data: [DONE]\n\n"
         raise error
 
 async def handle_normal_response(response, model):
