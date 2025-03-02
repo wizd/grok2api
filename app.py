@@ -668,30 +668,28 @@ async def process_model_response(response, model):
         if response and response.get("isThinking", False) and not CONFIG["SHOW_THINKING"]:
             return result
             
+        # 处理思考阶段
         if response and response.get("isThinking", False):
             if not CONFIG["IS_THINKING"]:
-                # 开始思考过程
+                # 开始新的思考过程
                 result["token"] = "<think>" + response.get("token", "")
                 CONFIG["IS_THINKING"] = True
             else:
                 # 继续思考过程
                 result["token"] = response.get("token", "")
-        elif response and response.get("messageTag") == "final":
+        # 处理正文阶段
+        else:
             if CONFIG["IS_THINKING"]:
-                # 如果还在思考状态，先关闭思考标签
+                # 如果之前在思考状态，先关闭思考标签
                 result["token"] = "</think>\n" + response.get("token", "")
                 CONFIG["IS_THINKING"] = False
             else:
-                # 直接输出最终消息
-                result["token"] = response.get("token")
-        elif response and not response.get("isThinking", False):
-            if CONFIG["IS_THINKING"]:
-                # 思考过程结束，切换到正常输出
-                result["token"] = "</think>\n" + response.get("token", "")
-                CONFIG["IS_THINKING"] = False
-            else:
-                # 正常输出
-                result["token"] = response.get("token")
+                # 正常输出正文
+                result["token"] = response.get("token", "")
+                
+            # 处理最终消息
+            if response.get("messageTag") == "final":
+                CONFIG["IS_THINKING"] = False  # 确保思考状态被重置
     elif model == "grok-3-reasoning":
         if response and response.get("isThinking", False) and not CONFIG["SHOW_THINKING"]:
             return result
@@ -774,12 +772,19 @@ async def stream_response_generator(response, model):
             raise
             
         finally:
-            # 确保在流结束时发送[DONE]标记
+            # 如果还在思考状态，确保关闭think标签
+            if CONFIG["IS_THINKING"]:
+                yield f"data: {json.dumps(MessageProcessor.create_chat_response('</think>', model, True))}\n\n"
+                CONFIG["IS_THINKING"] = False
+            # 发送[DONE]标记
             yield "data: [DONE]\n\n"
             
     except Exception as error:
         logger.error(f"流式响应总体错误: {str(error)}", "Server")
-        # 在发生错误时也发送[DONE]标记
+        # 在发生错误时也要确保关闭think标签和发送[DONE]标记
+        if CONFIG["IS_THINKING"]:
+            yield f"data: {json.dumps(MessageProcessor.create_chat_response('</think>', model, True))}\n\n"
+            CONFIG["IS_THINKING"] = False
         yield "data: [DONE]\n\n"
         raise error
 
