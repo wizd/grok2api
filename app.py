@@ -129,6 +129,8 @@ class AuthTokenManager:
         self.token_reset_switch = False
         self.token_reset_timer = None
         self.is_custom_sso = os.getenv("IS_CUSTOM_SSO", "false").lower() == "true"
+        # 添加当前token索引映射
+        self.current_token_index = {}
 
         self.model_config = {
             "grok-2": {
@@ -137,7 +139,7 @@ class AuthTokenManager:
             },
             "grok-3": {
                 "RequestFrequency": 20,
-                "ExpirationTime": 2 * 60 * 60  #
+                "ExpirationTime": 2 * 60 * 60  
             },
             "grok-3-deepsearch": {
                 "RequestFrequency": 10,
@@ -222,12 +224,27 @@ class AuthTokenManager:
         if normalized_model not in self.token_model_map or not self.token_model_map[normalized_model]:
             return None
             
-        token_entry = self.token_model_map[normalized_model][0]
+        # 获取当前模型的token列表
+        tokens = self.token_model_map[normalized_model]
         
-        if token_entry:
-            if self.is_custom_sso:
-                return token_entry["token"]
+        # 如果是自定义SSO模式，直接返回第一个token
+        if self.is_custom_sso:
+            return tokens[0]["token"]
+
+        # 初始化或获取当前token索引
+        if normalized_model not in self.current_token_index:
+            self.current_token_index[normalized_model] = 0
+
+        # 尝试最多tokens的长度次数找到可用token
+        attempts = len(tokens)
+        while attempts > 0:
+            current_index = self.current_token_index[normalized_model]
+            token_entry = tokens[current_index]
             
+            # 更新下一个token的索引（循环）
+            self.current_token_index[normalized_model] = (current_index + 1) % len(tokens)
+            
+            # 检查token是否可用
             if token_entry["StartCallTime"] is None:
                 token_entry["StartCallTime"] = time.time()
                 
@@ -235,24 +252,28 @@ class AuthTokenManager:
                 self.start_token_reset_process()
                 self.token_reset_switch = True
                 
-            token_entry["RequestCount"] += 1
-            
-            if token_entry["RequestCount"] > self.model_config[normalized_model]["RequestFrequency"]:
-                self.remove_token_from_model(normalized_model, token_entry["token"])
-                if not self.token_model_map[normalized_model]:
-                    return None
-                next_token_entry = self.token_model_map[normalized_model][0]
-                return next_token_entry["token"] if next_token_entry else None
-            
-            sso = token_entry["token"].split("sso=")[1].split(";")[0]
-            if sso in self.token_status_map and normalized_model in self.token_status_map[sso]:
-                if token_entry["RequestCount"] == self.model_config[normalized_model]["RequestFrequency"]:
-                    self.token_status_map[sso][normalized_model]["isValid"] = False
-                    self.token_status_map[sso][normalized_model]["invalidatedTime"] = time.time()
+            # 检查token是否超过请求频率限制
+            if token_entry["RequestCount"] < self.model_config[normalized_model]["RequestFrequency"]:
+                token_entry["RequestCount"] += 1
                 
-                self.token_status_map[sso][normalized_model]["totalRequestCount"] += 1
+                # 更新token状态
+                sso = token_entry["token"].split("sso=")[1].split(";")[0]
+                if sso in self.token_status_map and normalized_model in self.token_status_map[sso]:
+                    if token_entry["RequestCount"] == self.model_config[normalized_model]["RequestFrequency"]:
+                        self.token_status_map[sso][normalized_model]["isValid"] = False
+                        self.token_status_map[sso][normalized_model]["invalidatedTime"] = time.time()
+                    
+                    self.token_status_map[sso][normalized_model]["totalRequestCount"] += 1
                 
-            return token_entry["token"]
+                return token_entry["token"]
+            
+            # 如果当前token不可用，移除它并继续尝试下一个
+            self.remove_token_from_model(normalized_model, token_entry["token"])
+            attempts -= 1
+            
+            # 如果没有tokens了，返回None
+            if not self.token_model_map[normalized_model]:
+                return None
         
         return None
         
@@ -278,6 +299,13 @@ class AuthTokenManager:
                 normalized_model,
                 time.time()
             ))
+            
+            # 调整当前索引，确保不会超出范围
+            if normalized_model in self.current_token_index:
+                if len(model_tokens) > 0:
+                    self.current_token_index[normalized_model] = self.current_token_index[normalized_model] % len(model_tokens)
+                else:
+                    self.current_token_index[normalized_model] = 0
             
             if not self.token_reset_switch:
                 self.start_token_reset_process()
