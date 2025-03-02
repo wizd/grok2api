@@ -668,28 +668,28 @@ async def process_model_response(response, model):
         if response and response.get("isThinking", False) and not CONFIG["SHOW_THINKING"]:
             return result
             
-        # 处理思考阶段
         if response and response.get("isThinking", False):
             if not CONFIG["IS_THINKING"]:
-                # 开始新的思考过程
-                result["token"] = "<think>" + response.get("token", "")
+                # 开始新的思考过程，添加开始标签
+                result["token"] = "<think>" + (response.get("token", "") or "")
                 CONFIG["IS_THINKING"] = True
             else:
                 # 继续思考过程
                 result["token"] = response.get("token", "")
-        # 处理正文阶段
         else:
+            # 非思考状态
             if CONFIG["IS_THINKING"]:
                 # 如果之前在思考状态，先关闭思考标签
-                result["token"] = "</think>\n" + response.get("token", "")
+                result["token"] = "</think>\n" + (response.get("token", "") or "")
                 CONFIG["IS_THINKING"] = False
             else:
                 # 正常输出正文
                 result["token"] = response.get("token", "")
                 
-            # 处理最终消息
-            if response.get("messageTag") == "final":
-                CONFIG["IS_THINKING"] = False  # 确保思考状态被重置
+        # 处理最终消息
+        if response.get("messageTag") == "final" and CONFIG["IS_THINKING"]:
+            result["token"] = (result["token"] or "") + "</think>"
+            CONFIG["IS_THINKING"] = False
     elif model == "grok-3-reasoning":
         if response and response.get("isThinking", False) and not CONFIG["SHOW_THINKING"]:
             return result
