@@ -749,16 +749,30 @@ def process_model_response(response, model):
     elif model == 'grok-3':
         result["token"] = response.get("token")
     elif model == 'grok-3-deepsearch':
+        # 如果不显示思考过程，且当前是思考步骤，直接返回
         if response.get("messageStepId") and not CONFIG["SHOW_THINKING"]:
             return result
-        if response.get("messageStepId") and not CONFIG["IS_THINKING"]:
-            result["token"] = "<think>" + response.get("token", "")
-            CONFIG["IS_THINKING"] = True
-        elif not response.get("messageStepId") and CONFIG["IS_THINKING"] and response.get("messageTag") == "final":
-            result["token"] = "</think>" + response.get("token", "")
-            CONFIG["IS_THINKING"] = False
-        elif (response.get("messageStepId") and CONFIG["IS_THINKING"] and response.get("messageTag") == "assistant") or response.get("messageTag") == "final":
-            result["token"] = response.get("token")
+            
+        # 获取当前token
+        current_token = response.get("token", "")
+        
+        # 处理最终输出
+        if response.get("messageTag") == "final":
+            if CONFIG["IS_THINKING"]:
+                result["token"] = "</think>\n" + current_token
+                CONFIG["IS_THINKING"] = False
+            else:
+                result["token"] = current_token
+            return result
+            
+        # 处理思考过程
+        if response.get("messageStepId"):
+            if not CONFIG["IS_THINKING"]:
+                result["token"] = "<think>\n" + current_token
+                CONFIG["IS_THINKING"] = True
+            else:
+                result["token"] = current_token
+                
     elif model == 'grok-3-reasoning':
         if response.get("isThinking") and not CONFIG["SHOW_THINKING"]:
             return result
