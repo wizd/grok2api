@@ -8,3 +8,5 @@ index.js
 package.json
 logger.js
 docker-compose.yml
+start.bat
+start.sh

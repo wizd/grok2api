@@ -667,6 +667,11 @@ class GrokApiClient:
             if file_id:
                 file_attachments.insert(0, file_id)
             messages = last_message_content.strip()
+        if messages.strip() == '':
+            if convert_to_file:
+                messages = '基于txt文件内容进行回复：'
+            else:
+                raise ValueError('消息内容为空!')
         return {
             "temporary": CONFIG["API"].get("IS_TEMP_CONVERSATION", False),
             "modelName": self.model_id,

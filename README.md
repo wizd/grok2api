@@ -10,7 +10,9 @@
 1. 打开无痕浏览器，输入https://grok.com
 2. 直接进入则没有被风控，如果出现下图所示画面，则表示已经被风控，该ip无法使用本项目
    ![image](https://github.com/user-attachments/assets/0466aa57-9a31-4f7c-bd07-fece11f27646)
-3. 如果风控后，过了5秒盾，会给与一个一年有效期的cf_clearance，可以将这个填入环境变量CF_CLEARANCE，这个cf_clearance和你的ip是绑定的，如果更换ip需要重新获取，可以提高破盾的稳定性（大概）。
+   
+4. 如果风控后，过了5秒盾，会给与一个一年有效期的cf_clearance，可以将这个填入环境变量CF_CLEARANCE，这个cf_clearance和你的ip是绑定的，如果更换ip需要重新获取，可以提高破盾的稳定性（大概）。
+5. 如果ip没有风控，不要加cf_clearance，加了可能反而因为校验问题出盾
 
 ### 功能特点
 实现的功能：
