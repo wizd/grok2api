@@ -5,4 +5,14 @@ services:
     container_name: grok2api_python
     expose:
       - 3100
+    environment:
+      - API_KEY=${API_KEY}
+      - TUMY_KEY=${TUMY_KEY:-}
+      - PICGO_KEY=${PICGO_KEY:-}
+      - IS_TEMP_CONVERSATION=${IS_TEMP_CONVERSATION:-true}
+      - IS_CUSTOM_SSO=${IS_CUSTOM_SSO:-false}
+      - ISSHOW_SEARCH_RESULTS=${ISSHOW_SEARCH_RESULTS:-false}
+      - PORT=${PORT:-3100}
+      - SHOW_THINKING=${SHOW_THINKING:-true}
+      - SSO=${SSO}
     restart: unless-stopped
